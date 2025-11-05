@@ -46,3 +46,5 @@ backend/*.env
 backend/.env
 backend/.modal*
 backend/brca1_analysis_plot.png
+
+backend/note.txt

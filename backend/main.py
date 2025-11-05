@@ -14,7 +14,7 @@ app = modal.App("music-generator")
 
 image = (
     modal.Image.debian_slim()
-    .apt_install("git")
+    .apt_install("git", "ffmpeg")
     .pip_install_from_requirements("requirements.txt")
     .run_commands(["git clone https://github.com/ace-step/ACE-Step.git /tmp/ACE-Step", "cd /tmp/ACE-Step && pip install ."])
     .env({"HF_HOME": "/.cache/huggingface"})
@@ -180,8 +180,8 @@ class MusicGenServer:
         )
 
         audio_s3_key = f"{uuid.uuid4()}.wav"
-        s3_client.upload_file(output_path, bucket_name, audio_s3_key)
-        os.remove(output_path)
+        # s3_client.upload_file(output_path, bucket_name, audio_s3_key)
+        # os.remove(output_path)
 
         # Thumbnail generation
         thumbnail_prompt = f"{prompt}, album cover art"
@@ -192,11 +192,14 @@ class MusicGenServer:
         image.save(image_output_path)
 
         image_s3_key = f"{uuid.uuid4()}.png"
-        s3_client.upload_file(image_output_path, bucket_name, image_s3_key)
-        os.remove(image_output_path)
+        # s3_client.upload_file(image_output_path, bucket_name, image_s3_key)
+        # os.remove(image_output_path)
 
         # Category generation: "hip-hop", "rock"
         categories = self.generate_categories(description_for_categorization)
+
+        print(
+            f"audio_s3_key: {audio_s3_key}, image_s3_key: {image_s3_key}, categories: {categories}")
 
         return GenerateMusicResponseS3(
             s3_key=audio_s3_key,
@@ -262,13 +265,19 @@ def main():
 
     request_data = GenerateWithDescribedLyricsRequest(
         prompt="rave, funk, 140BPM, disco",
-        described_lyrics="lyrics about water bottles",
+        described_lyrics="lyrics about paris",
         guidance_scale=15
     )
 
+    # TODO: Replace key on .env file to run locally
+    headers = {
+        "Modal-Key": "wk-GPk........wXdm",
+        "Modal-Secret": "ws-zQh.....Bb5QGVpi"
+    }
+
     payload = request_data.model_dump()
 
-    response = requests.post(endpoint_url, json=payload)
+    response = requests.post(endpoint_url, json=payload, headers=headers)
     response.raise_for_status()
     result = GenerateMusicResponseS3(**response.json())
 
