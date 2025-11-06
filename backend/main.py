@@ -162,50 +162,61 @@ class MusicGenServer:
         print(f"Generated lyrics: \n{final_lyrics}")
         print(f"Prompt: \n{prompt}")
 
-        s3_client = boto3.client("s3")
+        s3_client = boto3.client(
+            service_name="s3",
+            endpoint_url=os.environ["S3_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            region_name=os.environ["AWS_REGION"],
+        )
+
         bucket_name = os.environ["S3_BUCKET_NAME"]
-
         output_dir = "/tmp/outputs"
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f"{uuid.uuid4()}.wav")
 
-        self.music_model(
-            prompt=prompt,
-            lyrics=final_lyrics,
-            audio_duration=audio_duration,
-            infer_step=infer_step,
-            guidance_scale=guidance_scale,
-            save_path=output_path,
-            manual_seeds=str(seed)
-        )
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"{uuid.uuid4()}.wav")
 
-        audio_s3_key = f"{uuid.uuid4()}.wav"
-        # s3_client.upload_file(output_path, bucket_name, audio_s3_key)
-        # os.remove(output_path)
+            self.music_model(
+                prompt=prompt,
+                lyrics=final_lyrics,
+                audio_duration=audio_duration,
+                infer_step=infer_step,
+                guidance_scale=guidance_scale,
+                save_path=output_path,
+                manual_seeds=str(seed)
+            )
 
-        # Thumbnail generation
-        thumbnail_prompt = f"{prompt}, album cover art"
-        image = self.image_pipe(
-            prompt=thumbnail_prompt, num_inference_steps=2, guidance_scale=0.0).images[0]
+            audio_s3_key = f"{uuid.uuid4()}.wav"
+            s3_client.upload_file(output_path, bucket_name, audio_s3_key)
+            os.remove(output_path)
 
-        image_output_path = os.path.join(output_dir, f"{uuid.uuid4()}.png")
-        image.save(image_output_path)
+            # Thumbnail generation
+            thumbnail_prompt = f"{prompt}, album cover art"
+            image = self.image_pipe(
+                prompt=thumbnail_prompt, num_inference_steps=2, guidance_scale=0.0).images[0]
 
-        image_s3_key = f"{uuid.uuid4()}.png"
-        # s3_client.upload_file(image_output_path, bucket_name, image_s3_key)
-        # os.remove(image_output_path)
+            image_output_path = os.path.join(output_dir, f"{uuid.uuid4()}.png")
+            image.save(image_output_path)
 
-        # Category generation: "hip-hop", "rock"
-        categories = self.generate_categories(description_for_categorization)
+            image_s3_key = f"{uuid.uuid4()}.png"
+            s3_client.upload_file(image_output_path, bucket_name, image_s3_key)
+            os.remove(image_output_path)
 
-        print(
-            f"audio_s3_key: {audio_s3_key}, image_s3_key: {image_s3_key}, categories: {categories}")
+            # Category generation: "hip-hop", "rock"
+            categories = self.generate_categories(description_for_categorization)
 
-        return GenerateMusicResponseS3(
-            s3_key=audio_s3_key,
-            cover_image_s3_key=image_s3_key,
-            categories=categories
-        )
+            print(
+                f"audio_s3_key: {audio_s3_key}, image_s3_key: {image_s3_key}, categories: {categories}")
+
+            return GenerateMusicResponseS3(
+                s3_key=audio_s3_key,
+                cover_image_s3_key=image_s3_key,
+                categories=categories
+            )
+        
+        except Exception as e:
+            print(f"Error uploading file to S3: {e}")
 
     @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
     def generate(self) -> GenerateMusicResponse:
